@@ -26,9 +26,10 @@ const DEFAULT_AXIS_RANGE: AxisRangeSettings = {
   yMax: 1_000_000
 };
 const DEFAULT_LOGICLE: LogicleSettings = {
-  m: 4.5,
-  w: 1,
-  a: 0
+  T: 1_000_000,
+  M: 4.5,
+  W: 1,
+  A: 0
 };
 
 function makeId(prefix: string): string {
@@ -476,11 +477,18 @@ export const useWorkspaceStore = create<WorkspaceStoreState>((set, get) => ({
     };
 
     // Keep parameters in valid ranges.
-    next.m = Math.max(0.5, next.m);
-    next.w = Math.max(0, next.w);
-    next.a = Math.max(0, next.a);
+    next.T = Math.max(1, next.T);
+    next.M = Math.max(0.5, next.M);
+    next.W = Math.max(0, next.W);
+    next.A = Math.max(0, next.A);
 
-    if (next.m === state.logicle.m && next.w === state.logicle.w && next.a === state.logicle.a) {
+    if (
+      next.T === state.logicle.T &&
+      next.M === state.logicle.M &&
+      next.W === state.logicle.W &&
+      next.A === state.logicle.A &&
+      next.bins === state.logicle.bins
+    ) {
       return;
     }
 

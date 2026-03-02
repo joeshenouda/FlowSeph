@@ -29,9 +29,10 @@ export default function GraphPropertiesPanel() {
     yMax: axisRange.yMax.toString()
   });
   const [logicleDraft, setLogicleDraft] = useState({
-    m: logicle.m.toString(),
-    w: logicle.w.toString(),
-    a: logicle.a.toString()
+    T: logicle.T.toString(),
+    M: logicle.M.toString(),
+    W: logicle.W.toString(),
+    A: logicle.A.toString()
   });
 
   useEffect(() => {
@@ -45,11 +46,12 @@ export default function GraphPropertiesPanel() {
 
   useEffect(() => {
     setLogicleDraft({
-      m: logicle.m.toString(),
-      w: logicle.w.toString(),
-      a: logicle.a.toString()
+      T: logicle.T.toString(),
+      M: logicle.M.toString(),
+      W: logicle.W.toString(),
+      A: logicle.A.toString()
     });
-  }, [logicle.m, logicle.w, logicle.a]);
+  }, [logicle.T, logicle.M, logicle.W, logicle.A]);
 
   const parseNumber = (value: string): number | null => {
     const parsed = Number.parseFloat(value);
@@ -270,20 +272,38 @@ export default function GraphPropertiesPanel() {
 
         <div className="space-y-2 rounded border border-slate-700 bg-panelSoft p-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Logicle Params</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
+            <label className="block space-y-1 text-xs text-muted">
+              <span>T</span>
+              <input
+                type="number"
+                step={1}
+                value={logicleDraft.T}
+                onChange={(event) => {
+                  setLogicleDraft((current) => ({ ...current, T: event.target.value }));
+                }}
+                onBlur={() => commitLogicleField('T')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    commitLogicleField('T');
+                  }
+                }}
+                className="w-full rounded border border-slate-700 bg-panel px-2 py-1 text-sm text-ink"
+              />
+            </label>
             <label className="block space-y-1 text-xs text-muted">
               <span>M</span>
               <input
                 type="number"
                 step={0.1}
-                value={logicleDraft.m}
+                value={logicleDraft.M}
                 onChange={(event) => {
-                  setLogicleDraft((current) => ({ ...current, m: event.target.value }));
+                  setLogicleDraft((current) => ({ ...current, M: event.target.value }));
                 }}
-                onBlur={() => commitLogicleField('m')}
+                onBlur={() => commitLogicleField('M')}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
-                    commitLogicleField('m');
+                    commitLogicleField('M');
                   }
                 }}
                 className="w-full rounded border border-slate-700 bg-panel px-2 py-1 text-sm text-ink"
@@ -294,14 +314,14 @@ export default function GraphPropertiesPanel() {
               <input
                 type="number"
                 step={0.1}
-                value={logicleDraft.w}
+                value={logicleDraft.W}
                 onChange={(event) => {
-                  setLogicleDraft((current) => ({ ...current, w: event.target.value }));
+                  setLogicleDraft((current) => ({ ...current, W: event.target.value }));
                 }}
-                onBlur={() => commitLogicleField('w')}
+                onBlur={() => commitLogicleField('W')}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
-                    commitLogicleField('w');
+                    commitLogicleField('W');
                   }
                 }}
                 className="w-full rounded border border-slate-700 bg-panel px-2 py-1 text-sm text-ink"
@@ -312,14 +332,14 @@ export default function GraphPropertiesPanel() {
               <input
                 type="number"
                 step={0.1}
-                value={logicleDraft.a}
+                value={logicleDraft.A}
                 onChange={(event) => {
-                  setLogicleDraft((current) => ({ ...current, a: event.target.value }));
+                  setLogicleDraft((current) => ({ ...current, A: event.target.value }));
                 }}
-                onBlur={() => commitLogicleField('a')}
+                onBlur={() => commitLogicleField('A')}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
-                    commitLogicleField('a');
+                    commitLogicleField('A');
                   }
                 }}
                 className="w-full rounded border border-slate-700 bg-panel px-2 py-1 text-sm text-ink"

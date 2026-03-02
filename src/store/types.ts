@@ -80,9 +80,11 @@ export interface GraphSettings {
 }
 
 export interface LogicleSettings {
-  m: number;
-  w: number;
-  a: number;
+  T: number;
+  M: number;
+  W: number;
+  A: number;
+  bins?: number;
 }
 
 export interface AxisRangeSettings {

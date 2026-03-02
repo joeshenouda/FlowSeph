@@ -1,4 +1,5 @@
 import type { AxisScaleMode, LogicleSettings, PlotType } from '../store/types';
+import { computeLogicleCoefficients, logicleScaleSingle } from './logicle';
 
 export interface Domain {
   min: number;
@@ -9,9 +10,10 @@ const LN10 = Math.log(10);
 
 const LOGICLE_T = 1_000_000;
 const DEFAULT_LOGICLE_SETTINGS: LogicleSettings = {
-  m: 4.5,
-  w: 1,
-  a: 0
+  T: LOGICLE_T,
+  M: 4.5,
+  W: 1,
+  A: 0
 };
 
 interface AxisTransformOptions {
@@ -35,9 +37,11 @@ function resolveLogicle(logicle?: LogicleSettings): LogicleSettings {
   }
 
   return {
-    m: Math.max(0.5, logicle.m),
-    w: Math.max(0, logicle.w),
-    a: Math.max(0, logicle.a)
+    T: Math.max(1, logicle.T),
+    M: Math.max(0.5, logicle.M),
+    W: Math.max(0, logicle.W),
+    A: Math.max(0, logicle.A),
+    bins: logicle.bins
   };
 }
 
@@ -47,10 +51,10 @@ function logicleCoefficients(settings?: LogicleSettings): {
   negScale: number;
 } {
   const logicle = resolveLogicle(settings);
-  const posDecades = Math.max(0.1, logicle.m - logicle.w);
-  const base = LOGICLE_T / Math.sinh(posDecades * LN10);
-  const posScale = logicle.m / posDecades;
-  const negScale = Math.max(0.1, logicle.m + logicle.a) / posDecades;
+  const posDecades = Math.max(0.1, logicle.M - logicle.W);
+  const base = logicle.T / Math.sinh(posDecades * LN10);
+  const posScale = logicle.M / posDecades;
+  const negScale = Math.max(0.1, logicle.M + logicle.A) / posDecades;
 
   return { base, posScale, negScale };
 }
@@ -60,19 +64,18 @@ export function isLogAxisChannel(channelName: string): boolean {
   return !normalized.includes('fsc') && !normalized.includes('fcs') && !normalized.includes('ssc');
 }
 
+// ---- Public function: drop-in replacement ----
 export function toAxisSpace(value: number, channelName: string, options?: AxisTransformOptions): number {
   if (!shouldUseLogicle(channelName, options?.scaleMode)) {
     return value;
   }
-
-  const coeff = logicleCoefficients(options?.logicle);
-
-  // Logicle-like mapping: near-linear around 0 and log-like in tails.
-  if (value >= 0) {
-    return (coeff.posScale * Math.asinh(value / coeff.base)) / LN10;
+  const s = options?.logicle;
+  if (!s) {
+    throw new Error("toAxisSpace: logicle settings missing (need T,M,W[,A])");
   }
 
-  return (-coeff.negScale * Math.asinh(Math.abs(value) / coeff.base)) / LN10;
+  const coeff = computeLogicleCoefficients(s);
+  return logicleScaleSingle(value, coeff);
 }
 
 export function fromAxisSpace(value: number, channelName: string, options?: AxisTransformOptions): number {
