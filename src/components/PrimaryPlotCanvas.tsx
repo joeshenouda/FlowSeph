@@ -4,7 +4,6 @@ import {
   buildGateMaskKey,
   computeDomain,
   computePercentileDomain,
-  fromAxisSpace,
   isLogAxisChannel,
   mapValuesToAxisSpace,
   paletteColor,
@@ -22,10 +21,11 @@ interface Point {
 }
 
 const AXIS_TICK_COUNT = 6;
+const FULL_LOGICLE_DOMAIN: Domain = { min: 0, max: 1 };
 const DENSITY_Q_LOW = 0.001;
 const DENSITY_Q_HIGH = 0.999;
 const DENSITY_DOMAIN_PADDING = 0.03;
-const PSEUDOCOLOR_MIN_VISIBLE_RATIO = 0.02;
+const PSEUDOCOLOR_MIN_VISIBLE_RATIO = 0;
 const axisFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const axisCompactFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
@@ -57,23 +57,18 @@ function formatAxisTickForChannel(
   value: number,
   channelName: string,
   scaleMode: AxisScaleMode,
-  logicle: LogicleSettings
+  _logicle: LogicleSettings
 ): string {
-  if (!isLogAxisChannel(channelName) && scaleMode !== 'logicle') {
+  const useLogicle = scaleMode === 'logicle' || (scaleMode === 'auto' && channelName && isLogAxisChannel(channelName));
+  if (!useLogicle) {
     return formatAxisTick(value);
   }
 
-  const intensity = fromAxisSpace(value, channelName, { scaleMode, logicle });
-  if (!Number.isFinite(intensity)) {
+  // While inverse mapping is being updated to match true logicle, show axis-space values directly.
+  if (!Number.isFinite(value)) {
     return '-';
   }
-
-  const abs = Math.abs(intensity);
-  if (abs >= 100000 || (abs > 0 && abs < 0.1)) {
-    return intensity.toExponential(1);
-  }
-
-  return formatAxisTick(intensity);
+  return value.toFixed(2);
 }
 
 function drawAxisTicks(
@@ -284,22 +279,33 @@ export default function PrimaryPlotCanvas() {
     }
     return getCurrentProcessingSignature(selectedSampleId);
   }, [selectedSampleId, getCurrentProcessingSignature]);
+  const displaySignature = useMemo(() => {
+    if (!currentSignature) {
+      return null;
+    }
+    const useLogicleX = xAxisScaleMode === 'logicle' || (xAxisScaleMode === 'auto' && xChannel && isLogAxisChannel(xChannel));
+    const useLogicleY = yAxisScaleMode === 'logicle' || (yAxisScaleMode === 'auto' && yChannel && isLogAxisChannel(yChannel));
+    if (!useLogicleX && !useLogicleY) {
+      return currentSignature;
+    }
+    return currentSignature.replace(/tx:[^|]+/, 'tx:off');
+  }, [currentSignature, xAxisScaleMode, yAxisScaleMode, xChannel, yChannel]);
 
   useEffect(() => {
-    if (!selectedSampleId || !currentSignature) {
+    if (!selectedSampleId || !displaySignature) {
       return;
     }
 
-    ensureProcessedChannels(selectedSampleId, currentSignature);
-  }, [selectedSampleId, currentSignature, ensureProcessedChannels]);
+    ensureProcessedChannels(selectedSampleId, displaySignature);
+  }, [selectedSampleId, displaySignature, ensureProcessedChannels]);
 
   const processedChannels = useMemo(() => {
-    if (!selectedSampleId || !currentSignature) {
+    if (!selectedSampleId || !displaySignature) {
       return null;
     }
 
-    return sampleData?.derivedCache.processedBySignature[currentSignature] ?? null;
-  }, [selectedSampleId, currentSignature, sampleData]);
+    return sampleData?.derivedCache.processedBySignature[displaySignature] ?? null;
+  }, [selectedSampleId, displaySignature, sampleData]);
 
   const xValues = xChannel && processedChannels ? processedChannels[xChannel] ?? null : null;
   const yValues = yChannel && processedChannels ? processedChannels[yChannel] ?? null : null;
@@ -371,13 +377,17 @@ export default function PrimaryPlotCanvas() {
   );
   const xDomain = defaultXDomain;
   const yDomain = defaultYDomain;
+  const useFullLogicleXDomain = xAxisScaleMode === 'logicle' || (xAxisScaleMode === 'auto' && xChannel && isLogAxisChannel(xChannel));
+  const useFullLogicleYDomain = yAxisScaleMode === 'logicle' || (yAxisScaleMode === 'auto' && yChannel && isLogAxisChannel(yChannel));
+  const xRenderDomain = useFullLogicleXDomain ? FULL_LOGICLE_DOMAIN : xDomain;
+  const yRenderDomain = useFullLogicleYDomain ? FULL_LOGICLE_DOMAIN : yDomain;
 
   const axisMismatch = Boolean(
     selectedPopulation &&
       currentSignature &&
       (selectedPopulation.xChannel !== xChannel ||
         selectedPopulation.yChannel !== yChannel ||
-        selectedPopulation.transformSignature !== currentSignature)
+        selectedPopulation.transformSignature !== (displaySignature ?? currentSignature))
   );
 
   useEffect(() => {
@@ -533,8 +543,8 @@ export default function PrimaryPlotCanvas() {
         width: densityWidth,
         height: densityHeight,
         smooth: graphSettings.smooth,
-        xDomain: [xDomain.min, xDomain.max],
-        yDomain: [yDomain.min, yDomain.max],
+        xDomain: [xRenderDomain.min, xRenderDomain.max],
+        yDomain: [yRenderDomain.min, yRenderDomain.max],
         qLow: DENSITY_Q_LOW,
         qHigh: DENSITY_Q_HIGH,
         domainPadding: DENSITY_DOMAIN_PADDING,
@@ -550,8 +560,8 @@ export default function PrimaryPlotCanvas() {
         yValuesMinMax: minMaxYDomain,
         xPercentileDomain: densityXDomain,
         yPercentileDomain: densityYDomain,
-        xDomainSent: [xDomain.min, xDomain.max],
-        yDomainSent: [yDomain.min, yDomain.max]
+        xDomainSent: [xRenderDomain.min, xRenderDomain.max],
+        yDomainSent: [yRenderDomain.min, yRenderDomain.max]
       });
     }
 
@@ -587,10 +597,10 @@ export default function PrimaryPlotCanvas() {
     densityXDomain.max,
     densityYDomain.min,
     densityYDomain.max,
-    xDomain.min,
-    xDomain.max,
-    yDomain.min,
-    yDomain.max,
+    xRenderDomain.min,
+    xRenderDomain.max,
+    yRenderDomain.min,
+    yRenderDomain.max,
     size.width,
     size.height,
     setWorkerProgress,
@@ -652,8 +662,8 @@ export default function PrimaryPlotCanvas() {
 
         if (source === drawPoints || !activeMask) {
           for (let i = 0; i < count; i += 1) {
-            const px = toPixel(source.xValues[i], xDomain, size.width);
-            const py = size.height - 1 - toPixel(source.yValues[i], yDomain, size.height);
+            const px = toPixel(source.xValues[i], xRenderDomain, size.width);
+            const py = size.height - 1 - toPixel(source.yValues[i], yRenderDomain, size.height);
             ctx.fillRect(px, py, 1.3, 1.3);
           }
         } else {
@@ -661,8 +671,8 @@ export default function PrimaryPlotCanvas() {
             if (activeMask[i] !== 1) {
               continue;
             }
-            const px = toPixel(source.xValues[i], xDomain, size.width);
-            const py = size.height - 1 - toPixel(source.yValues[i], yDomain, size.height);
+            const px = toPixel(source.xValues[i], xRenderDomain, size.width);
+            const py = size.height - 1 - toPixel(source.yValues[i], yRenderDomain, size.height);
             ctx.fillRect(px, py, 1.3, 1.3);
           }
         }
@@ -694,13 +704,13 @@ export default function PrimaryPlotCanvas() {
           continue;
         }
 
-        if (gateNode.xChannel !== xChannel || gateNode.yChannel !== yChannel || gateNode.transformSignature !== currentSignature) {
-          continue;
-        }
+      if (gateNode.xChannel !== xChannel || gateNode.yChannel !== yChannel || gateNode.transformSignature !== (displaySignature ?? currentSignature)) {
+        continue;
+      }
 
         const color = selectedPopulationId === gateId ? 'rgba(255, 153, 72, 0.95)' : 'rgba(255, 138, 43, 0.68)';
         const lineWidth = selectedPopulationId === gateId ? 1.8 : 1.1;
-        drawGateOutline(ctx, gateNode.definition, xDomain, yDomain, size.width, size.height, color, lineWidth);
+        drawGateOutline(ctx, gateNode.definition, xRenderDomain, yRenderDomain, size.width, size.height, color, lineWidth);
       }
     }
 
@@ -758,8 +768,8 @@ export default function PrimaryPlotCanvas() {
     if (xPlotValues && yPlotValues && xChannel && yChannel) {
       drawAxisTicks(
         ctx,
-        xDomain,
-        yDomain,
+        xRenderDomain,
+        yRenderDomain,
         size.width,
         size.height,
         xChannel,
@@ -774,8 +784,8 @@ export default function PrimaryPlotCanvas() {
     graphSettings,
     xPlotValues,
     yPlotValues,
-    xDomain,
-    yDomain,
+    xRenderDomain,
+    yRenderDomain,
     drawPoints,
     activeMask,
     densityGrid,
@@ -788,6 +798,7 @@ export default function PrimaryPlotCanvas() {
     yAxisScaleMode,
     logicle,
     currentSignature,
+    displaySignature,
     toolMode,
     polygonDraft,
     polygonHover,
@@ -804,7 +815,8 @@ export default function PrimaryPlotCanvas() {
   }
 
   function createGate(definition: GateDefinition, name: string): void {
-    if (!xChannel || !yChannel || !currentSignature) {
+    const gateSignature = displaySignature ?? currentSignature;
+    if (!xChannel || !yChannel || !gateSignature) {
       return;
     }
 
@@ -815,7 +827,7 @@ export default function PrimaryPlotCanvas() {
       visible: true,
       xChannel,
       yChannel,
-      transformSignature: currentSignature,
+      transformSignature: gateSignature,
       definition
     });
   }
@@ -826,8 +838,8 @@ export default function PrimaryPlotCanvas() {
     }
 
     const points = polygonDraft.map((point) => ({
-      x: toData(point.x, xDomain, size.width),
-      y: toData(size.height - 1 - point.y, yDomain, size.height)
+      x: toData(point.x, xRenderDomain, size.width),
+      y: toData(size.height - 1 - point.y, yRenderDomain, size.height)
     }));
 
     createGate({ kind: 'polygon', points }, `Polygon ${populationOrder.length + 1}`);
@@ -892,8 +904,8 @@ export default function PrimaryPlotCanvas() {
             }
 
             if (toolMode === 'quadrant') {
-              const xThreshold = toData(point.x, xDomain, size.width);
-              const yThreshold = toData(size.height - 1 - point.y, yDomain, size.height);
+              const xThreshold = toData(point.x, xRenderDomain, size.width);
+              const yThreshold = toData(size.height - 1 - point.y, yRenderDomain, size.height);
 
               createGate({ kind: 'quadrant', xThreshold, yThreshold, quadrant: 'Q1' }, `Q1 ${populationOrder.length + 1}`);
               createGate({ kind: 'quadrant', xThreshold, yThreshold, quadrant: 'Q2' }, `Q2 ${populationOrder.length + 2}`);
@@ -935,10 +947,10 @@ export default function PrimaryPlotCanvas() {
               createGate(
                 {
                   kind: 'rectangle',
-                  xMin: toData(minX, xDomain, size.width),
-                  xMax: toData(maxX, xDomain, size.width),
-                  yMin: toData(size.height - 1 - maxY, yDomain, size.height),
-                  yMax: toData(size.height - 1 - minY, yDomain, size.height)
+                  xMin: toData(minX, xRenderDomain, size.width),
+                  xMax: toData(maxX, xRenderDomain, size.width),
+                  yMin: toData(size.height - 1 - maxY, yRenderDomain, size.height),
+                  yMax: toData(size.height - 1 - minY, yRenderDomain, size.height)
                 },
                 `Rectangle ${populationOrder.length + 1}`
               );
@@ -946,10 +958,12 @@ export default function PrimaryPlotCanvas() {
             }
 
             if (toolMode === 'ellipse') {
-              const cx = toData((minX + maxX) / 2, xDomain, size.width);
-              const cy = toData(size.height - 1 - (minY + maxY) / 2, yDomain, size.height);
-              const rx = Math.abs(toData(maxX, xDomain, size.width) - toData(minX, xDomain, size.width)) / 2;
-              const ry = Math.abs(toData(size.height - 1 - minY, yDomain, size.height) - toData(size.height - 1 - maxY, yDomain, size.height)) / 2;
+              const cx = toData((minX + maxX) / 2, xRenderDomain, size.width);
+              const cy = toData(size.height - 1 - (minY + maxY) / 2, yRenderDomain, size.height);
+              const rx = Math.abs(toData(maxX, xRenderDomain, size.width) - toData(minX, xRenderDomain, size.width)) / 2;
+              const ry =
+                Math.abs(toData(size.height - 1 - minY, yRenderDomain, size.height) - toData(size.height - 1 - maxY, yRenderDomain, size.height)) /
+                2;
 
               createGate(
                 {
@@ -1056,10 +1070,10 @@ export default function PrimaryPlotCanvas() {
           {xChannel || '-'} vs {yChannel || '-'}
         </span>
         <span>
-          X[{formatAxisTickForChannel(xDomain.min, xChannel || '', xAxisScaleMode, logicle)},{' '}
-          {formatAxisTickForChannel(xDomain.max, xChannel || '', xAxisScaleMode, logicle)}] Y[
-          {formatAxisTickForChannel(yDomain.min, yChannel || '', yAxisScaleMode, logicle)},{' '}
-          {formatAxisTickForChannel(yDomain.max, yChannel || '', yAxisScaleMode, logicle)}]
+          X[{formatAxisTickForChannel(xRenderDomain.min, xChannel || '', xAxisScaleMode, logicle)},{' '}
+          {formatAxisTickForChannel(xRenderDomain.max, xChannel || '', xAxisScaleMode, logicle)}] Y[
+          {formatAxisTickForChannel(yRenderDomain.min, yChannel || '', yAxisScaleMode, logicle)},{' '}
+          {formatAxisTickForChannel(yRenderDomain.max, yChannel || '', yAxisScaleMode, logicle)}]
         </span>
         <span
           className={selectedPopulationId === 'ungated' ? 'cursor-default' : 'cursor-pointer text-accent'}

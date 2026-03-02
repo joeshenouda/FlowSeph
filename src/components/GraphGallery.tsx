@@ -5,6 +5,7 @@ import {
   buildThumbnailCacheKey,
   computeDomain,
   computePercentileDomain,
+  isLogAxisChannel,
   mapValuesToAxisSpace,
   paletteColor,
   toPixel
@@ -14,7 +15,7 @@ import { useWorkspaceStore } from '../store/useWorkspaceStore';
 const DENSITY_Q_LOW = 0.001;
 const DENSITY_Q_HIGH = 0.999;
 const DENSITY_DOMAIN_PADDING = 0.03;
-const PSEUDOCOLOR_MIN_VISIBLE_RATIO = 0.02;
+const PSEUDOCOLOR_MIN_VISIBLE_RATIO = 0;
 
 interface ThumbnailCardProps {
   sampleId: string;
@@ -49,6 +50,13 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
     if (!sample || !sampleData || !xChannel || !yChannel) {
       return null;
     }
+    const currentSignature = getCurrentProcessingSignature(sampleId);
+    const useLogicleXDomain =
+      xAxisScaleMode === 'logicle' || (xAxisScaleMode === 'auto' && xChannel && isLogAxisChannel(xChannel));
+    const useLogicleYDomain =
+      yAxisScaleMode === 'logicle' || (yAxisScaleMode === 'auto' && yChannel && isLogAxisChannel(yChannel));
+    const displaySignature =
+      useLogicleXDomain || useLogicleYDomain ? currentSignature.replace(/tx:[^|]+/, 'tx:off') : currentSignature;
 
     return buildThumbnailCacheKey({
       sampleId,
@@ -59,7 +67,7 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
       palette: graphSettings.palette,
       backgroundColor: graphSettings.backgroundColor,
       smooth: graphSettings.smooth,
-      processingSignature: getCurrentProcessingSignature(sampleId)
+      processingSignature: displaySignature
     });
   }, [
     sample,
@@ -72,7 +80,10 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
     graphSettings.palette,
     graphSettings.backgroundColor,
     graphSettings.smooth,
-    getCurrentProcessingSignature
+    getCurrentProcessingSignature,
+    xAxisScaleMode,
+    yAxisScaleMode,
+    logicle
   ]);
 
   useEffect(() => {
@@ -91,7 +102,15 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
     const cancelFns: Array<() => void> = [];
 
     const run = async () => {
-      const processed = getProcessedChannels(sampleId);
+      const currentSignature = getCurrentProcessingSignature(sampleId);
+      const useLogicleXDomain =
+        xAxisScaleMode === 'logicle' || (xAxisScaleMode === 'auto' && xChannel && isLogAxisChannel(xChannel));
+      const useLogicleYDomain =
+        yAxisScaleMode === 'logicle' || (yAxisScaleMode === 'auto' && yChannel && isLogAxisChannel(yChannel));
+      const displaySignature =
+        useLogicleXDomain || useLogicleYDomain ? currentSignature.replace(/tx:[^|]+/, 'tx:off') : currentSignature;
+
+      const processed = getProcessedChannels(sampleId, displaySignature);
       const xRaw = processed?.[xChannel];
       const yRaw = processed?.[yChannel];
       const xValues = xRaw ? mapValuesToAxisSpace(xRaw, xChannel, { scaleMode: xAxisScaleMode, logicle }) : null;
@@ -101,6 +120,8 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
         setThumbnailDataUrl(null);
         return;
       }
+      const useFullLogicleXDomain = useLogicleXDomain;
+      const useFullLogicleYDomain = useLogicleYDomain;
 
       let mask: Uint8Array | null = null;
 
@@ -176,8 +197,8 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
           return;
         }
 
-        const xDomain = computeDomain(sampled.xValues);
-        const yDomain = computeDomain(sampled.yValues);
+        const xDomain = useFullLogicleXDomain ? { min: 0, max: 1 } : computeDomain(sampled.xValues);
+        const yDomain = useFullLogicleYDomain ? { min: 0, max: 1 } : computeDomain(sampled.yValues);
 
         ctx.fillStyle = paletteColor(graphSettings.palette, 0.8, 0.84);
         for (let i = 0; i < sampled.xValues.length; i += 1) {
@@ -186,8 +207,12 @@ function ThumbnailCard({ sampleId, selected, onSelect }: ThumbnailCardProps) {
           ctx.fillRect(px, py, 1.2, 1.2);
         }
       } else {
-        const xDomain = computePercentileDomain(xValues, mask, DENSITY_Q_LOW, DENSITY_Q_HIGH, DENSITY_DOMAIN_PADDING);
-        const yDomain = computePercentileDomain(yValues, mask, DENSITY_Q_LOW, DENSITY_Q_HIGH, DENSITY_DOMAIN_PADDING);
+        const xDomain = useFullLogicleXDomain
+          ? { min: 0, max: 1 }
+          : computePercentileDomain(xValues, mask, DENSITY_Q_LOW, DENSITY_Q_HIGH, DENSITY_DOMAIN_PADDING);
+        const yDomain = useFullLogicleYDomain
+          ? { min: 0, max: 1 }
+          : computePercentileDomain(yValues, mask, DENSITY_Q_LOW, DENSITY_Q_HIGH, DENSITY_DOMAIN_PADDING);
         const densityJob = analysisClient.computeDensity2D({
           xValues,
           yValues,
